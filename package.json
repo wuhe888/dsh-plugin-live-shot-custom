@@ -1,0 +1,78 @@
+{
+  "name": "dsh-plugin-live-shot-custom",
+  "version": "0.7.0-custom.1",
+  "license": "MIT",
+  "author": "TangerineSplendor",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wuhe888/dsh-plugin-live-shot-custom.git"
+  },
+  "homepage": "https://github.com/wuhe888/dsh-plugin-live-shot-custom",
+  "bugs": {
+    "url": "https://github.com/wuhe888/dsh-plugin-live-shot-custom/issues"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "screenshot",
+    "windows",
+    "annotation"
+  ],
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "type": "module",
+  "description": "Windows 桌面区域截屏、标注和草稿附件，附带独立截屏设置页。",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "helper.js",
+    "ensure_runtime.js",
+    "helper_main.cjs",
+    "electron_controller.js",
+    "selection.js",
+    "settings.js",
+    "runtime_paths.cjs",
+    "client.js",
+    "worker.js",
+    "picker.js",
+    "native_picker.cs",
+    "native_picker.ps1",
+    "escape_bridge.cs",
+    "escape_bridge.ps1",
+    "capture_worker.ps1",
+    "overlay_preload.cjs",
+    "overlay.html",
+    "overlay.css",
+    "overlay.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "private": true,
+  "contributors": [
+    "wuhe888"
+  ]
+}
