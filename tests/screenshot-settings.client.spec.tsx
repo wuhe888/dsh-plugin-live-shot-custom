@@ -100,7 +100,27 @@ it.skipIf(process.platform !== 'win32')('edits screenshot settings in the main p
   await waitFor(() => { expect(launcher.hasAttribute('disabled')).toBe(false) })
   expect(launcher.hasAttribute('aria-haspopup')).toBe(false)
   expect(screen.queryByRole('checkbox')).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: '截屏分析' }))
+  for (const [id, label] of Object.entries({
+    ja: '日本語', de: 'Deutsch', es: 'Español', fr: 'Français', pt: 'Português', ru: 'Русский',
+  })) act(() => { locale.addLanguage({ id, label, fallback: 'en' }) })
+  const captureButton = screen.getByRole<HTMLButtonElement>('button', { name: '截屏分析' })
+  for (const [id, label, hint] of [
+    ['en', 'Screenshot analysis', 'Capture a screen region'],
+    ['ja', 'スクリーンショット解析', '画面の範囲'],
+    ['de', 'Screenshot-Analyse', 'Bildschirmbereich'],
+    ['es', 'Analizar captura', 'Capturar una zona'],
+    ['fr', 'Analyser une capture', 'Capturer une zone'],
+    ['pt', 'Analisar captura', 'Capturar uma área'],
+    ['ru', 'Анализ снимка экрана', 'Снять область'],
+    ['zh', '截屏分析', '截取屏幕区域'],
+  ] as const) {
+    act(() => { locale.setLocale(id) })
+    expect(screen.getByRole('button', { name: label, exact: true })).toBe(captureButton)
+    expect(captureButton.textContent).toBe(label)
+    expect(captureButton.title).toContain(hint)
+    expect(captureButton.title).toContain(preferences.hotkey)
+  }
+  fireEvent.click(captureButton)
   await waitFor(() => { expect(requests.some(request => request.op === 'start')).toBe(true) })
   act(() => { launcher.focus() })
   fireEvent.click(launcher)
@@ -123,6 +143,7 @@ it.skipIf(process.platform !== 'win32')('edits screenshot settings in the main p
   fireEvent.change(shortcut, { target: { value: 'Ctrl+Alt+A' } })
   fireEvent.click(screen.getByRole('button', { name: '保存' }))
   await waitFor(() => { expect(preferences.hotkey).toBe('Ctrl+Alt+A') })
+  await waitFor(() => { expect(captureButton.title).toContain('Ctrl+Alt+A') })
   await waitFor(() => { expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(false) })
   expect(screen.getByRole('region', { name: '截屏设置' })).toBe(page)
   expect(screen.queryByRole('alert')).toBeNull()

@@ -25,6 +25,17 @@ window.__ModuleLoader__.load({
       gameReady: 'Game compatibility enabled', gamePending: 'Waiting for Windows confirmation…', gameEnable: 'Enable administrator game compatibility',
       gameHint: 'Use when Esc cannot cancel capture in a game. Requires Windows confirmation and lasts for this run.' };
     ctx.effect(() => ctx.locale.register(namespace, { zh, en }));
+    const composerLocale = 'live-shot.composer';
+    ctx.effect(() => ctx.locale.register(composerLocale, {
+      zh: { label: '截屏分析', hint: '截取屏幕区域（全局快捷键：{hotkey}）\n按住 Shift 点击，仅本次切换是否隐藏桌面应用' },
+      en: { label: 'Screenshot analysis', hint: 'Capture a screen region ({hotkey})\nShift-click to toggle hiding the desktop app for this capture.' },
+      ja: { label: 'スクリーンショット解析', hint: '画面の範囲を選んで撮影（{hotkey}）\nShift キーを押しながらクリックすると、今回だけアプリを隠す設定を切り替えます。' },
+      de: { label: 'Screenshot-Analyse', hint: 'Bildschirmbereich aufnehmen ({hotkey})\nMit Umschalt-Klick ändern Sie nur für diese Aufnahme, ob die App ausgeblendet wird.' },
+      es: { label: 'Analizar captura', hint: 'Capturar una zona de la pantalla ({hotkey})\nHaz clic con Mayús para cambiar si se oculta la aplicación solo en esta captura.' },
+      fr: { label: 'Analyser une capture', hint: 'Capturer une zone de l’écran ({hotkey})\nMaj + clic pour masquer ou afficher l’application uniquement pour cette capture.' },
+      pt: { label: 'Analisar captura', hint: 'Capturar uma área da tela ({hotkey})\nUse Shift + clique para alternar a visibilidade do aplicativo apenas nesta captura.' },
+      ru: { label: 'Анализ снимка экрана', hint: 'Снять область экрана ({hotkey})\nЩёлкните с зажатой клавишей Shift, чтобы изменить видимость приложения только для этого снимка.' },
+    }));
     const t = ctx.locale.bind(namespace);
     const preferenceProps = () => ({ hooks: { preference: preferences } });
     const closeSettings = () => ctx.layout.selectPanel(null);
@@ -122,15 +133,14 @@ window.__ModuleLoader__.load({
       } catch (e) { /* A restarting Host is retried by the next poll. */ }
       finally { running = false; }
     }
-    function ShotButton({ usePreference }) {
+    function ShotButton({ usePreference, t }) {
       const preference = usePreference(value => value);
-      return h('button', { type: 'button', title: '实时桌面截图（全局 ' + preference.hotkey + '）\nShift+点击：本次反向切换隐藏桌面',
-        'aria-label': '截屏分析', onClick: event => {
+      return h('button', { type: 'button', title: t('hint', { hotkey: preference.hotkey }), onClick: event => {
           void post('start', event.shiftKey ? { hideDsh: !preference.value } : {}).catch(e => toast(e.message));
         },
         style: { border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'flex-end', gap: 3, padding: '0 5px 5px', boxSizing: 'border-box', height: 28, fontFamily: 'inherit', fontSize: 13, lineHeight: '18px', whiteSpace: 'nowrap' } },
         h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, 'aria-hidden': true },
-          h('path', { d: 'M3 7h4l2-3h6l2 3h4v13H3z' }), h('circle', { cx: 12, cy: 13, r: 4 })), h('span', null, '截屏分析'));
+          h('path', { d: 'M3 7h4l2-3h6l2 3h4v13H3z' }), h('circle', { cx: 12, cy: 13, r: 4 })), h('span', null, t('label')));
     }
     function SettingsIcon({ size }) {
       return h('svg', { width: size, height: size, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: ICON_REGULAR_STROKE, 'aria-hidden': true },
@@ -193,7 +203,7 @@ window.__ModuleLoader__.load({
           h(Button, { disabled: saving, onClick: () => setShortcutDraft('Ctrl+Shift+X') }, t('reset')),
           h(Button, { disabled: saving, onClick: closeSettings }, t('cancel'))))));
     }
-    ctx.slots.inject('conversation.input.left', () => ctx.slots.register({ name: 'conversation.input.left', id: 'dsh-shot', order: 20, inject: preferenceProps }, ShotButton));
+    ctx.slots.inject('conversation.input.left', () => ctx.slots.register({ name: 'conversation.input.left', id: 'dsh-shot', order: 20, locale: composerLocale, inject: preferenceProps }, ShotButton));
     ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: 'dsh-shot-settings', order: 5, label: () => t('settings') },
       SettingsIcon));
     ctx.slots.inject('sidebar.panellist.button', () => ctx.slots.register({ name: 'sidebar.panellist.button', key: 'dsh-shot-settings',
