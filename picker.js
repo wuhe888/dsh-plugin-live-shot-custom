@@ -48,7 +48,7 @@ export class NativePicker {
   }
   async run(command) {
     await this.start();
-    if (command.op === 'select') this.record({ state: 'selecting', bounds: command, result: null });
+    if (command.op === 'select') this.record({ state: 'selecting', result: null });
     return new Promise((resolve, reject) => {
       const id = randomUUID();
       this.pending.set(id, { resolve: result => { if (command.op === 'select') this.record({ state: result.selected ? 'selected' : 'cancelled', result }); resolve(result); }, reject, timer: setTimeout(() => {

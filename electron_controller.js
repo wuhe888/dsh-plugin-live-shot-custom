@@ -93,8 +93,6 @@ export function apply(ctx) {
       await makeWindow();
       owner = clientId || [...clients.entries()].filter(([, c]) => Date.now() - c.seen < 10000)
         .sort((a, b) => b[1].focused - a[1].focused)[0]?.[0];
-      display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-      win.setBounds(display.bounds);
       active = true; phase = 'preparing'; selection = null; startPoint = null; adjustment = null; downCandidate = null; lastError = '';
       generation++;
       if (typeof hideOverride === 'boolean' ? hideOverride : hideDsh) {
@@ -102,23 +100,29 @@ export function apply(ctx) {
         hiddenSession = await worker.run({ op: 'hide', pid: shellPid });
         if (!active || disposed) { await end(); return; }
       }
-      await present({ type: 'reset', width: display.bounds.width, height: display.bounds.height });
+      await present({ type: 'reset' });
       if (!active) return;
       phase = 'selecting';
       if (nativeSelection) {
         const session = generation;
-        const bounds = screen.dipToScreenRect(win, display.bounds);
         void (async () => {
-          const picked = await worker.run({ op: 'pick', ...bounds });
+          const picked = await worker.run({ op: 'pick' });
           if (!active || disposed || generation !== session) return;
           if (!picked.selected) { await end(); return; }
-          const physical = intersect(picked, bounds);
-          if (!physical) throw new Error('Selected region is outside the display');
-          const dip = screen.screenToDipRect(win, physical);
+          const { x, y, width, height } = picked;
+          const physical = { x, y, width, height };
+          // A null window uses the selected monitor's DPI, even if the editor last opened elsewhere.
+          const dip = screen.screenToDipRect(null, physical);
+          display = screen.getDisplayMatching(dip);
+          win.setBounds(display.bounds);
           selection = { x: dip.x - display.bounds.x, y: dip.y - display.bounds.y, width: dip.width, height: dip.height };
           await captureSelection(false, physical);
         })().catch(error => { if (active && generation === session) report(error); });
-      } else { win.show(); win.focus(); }
+      } else {
+        display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+        win.setBounds(display.bounds);
+        win.show(); win.focus();
+      }
     } catch (error) { await end(); throw error; }
     finally { opening = false; }
   }

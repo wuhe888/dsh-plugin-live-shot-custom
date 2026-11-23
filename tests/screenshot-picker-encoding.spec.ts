@@ -30,7 +30,7 @@ it.skipIf(process.platform !== 'win32' || process.arch !== 'x64')('returns reada
   const failedId = '权限检查-截图-📷'
   const nextId = '取消后仍可查询-📷'
   const replies = await runPicker(plugin, [
-    { id: failedId, op: 'select', x: '不是数字', y: 0, width: 64, height: 64 },
+    { id: failedId, op: '无效操作' },
     { id: nextId, op: 'adminEscapeStatus' },
   ])
   expect(replies).toHaveLength(2)

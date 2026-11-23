@@ -67,6 +67,7 @@ public static class PickerApi {
 
 public class NativeSelectionWindow : Form {
   private readonly Rectangle area;
+  private readonly bool ownsEscape;
   private readonly IntPtr foreground;
   private readonly Action<Dictionary<string,object>> done;
   private Bitmap bitmap;
@@ -88,8 +89,9 @@ public class NativeSelectionWindow : Form {
   public bool EscapeHook { get { return keyboardHook!=IntPtr.Zero; } }
   public bool EscapeRawInput { get { return rawKeyboard; } }
   private readonly DateTime opened=DateTime.UtcNow;
-  public NativeSelectionWindow(Rectangle bounds,Action<Dictionary<string,object>> closed) {
+  public NativeSelectionWindow(Rectangle bounds,Action<Dictionary<string,object>> closed,bool ownsEscape) {
     done=closed; foreground=PickerApi.GetForegroundWindow();
+    this.ownsEscape=ownsEscape;
     area=bounds;
     FormBorderStyle=FormBorderStyle.None; ShowInTaskbar=false; TopMost=true;
     AutoScaleMode=AutoScaleMode.None;
@@ -110,6 +112,8 @@ public class NativeSelectionWindow : Form {
     // Reset the z-order group before raising, preserving bounds and focus.
     const uint flags=0x0001|0x0002|0x0010; // SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
     if(value&&(!PickerApi.SetWindowPos(Handle,new IntPtr(-2),0,0,0,0,flags)||!PickerApi.SetWindowPos(Handle,new IntPtr(-1),0,0,0,0,flags)))throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"Could not show screenshot selection above other windows");
+    // WinForms can constrain the initial HWND to the primary display's tracking size.
+    if(value)Present();
   }
   protected override CreateParams CreateParams { get { var p=base.CreateParams; p.ExStyle|=0x80000|0x8000000|0x80; return p; } }
   protected override void WndProc(ref Message message) {
@@ -141,10 +145,13 @@ public class NativeSelectionWindow : Form {
     old=PickerApi.SelectObject(dc,dib);
     bitmap=new Bitmap(area.Width,area.Height,area.Width*4,PixelFormat.Format32bppPArgb,pixels);
     graphics=Graphics.FromImage(bitmap); graphics.CompositingMode=CompositingMode.SourceCopy;
-    esc=PickerApi.RegisterHotKey(Handle,2,0,27); Present();
+    if(ownsEscape)esc=PickerApi.RegisterHotKey(Handle,2,0,27);
+    Present();
   }
   protected override void OnShown(EventArgs e) {
     base.OnShown(e);
+    timer.Start();
+    if(!ownsEscape)return;
     // Only Escape is handled. Other keys are neither logged nor modified.
     // Keep callback work short; close the window on the message loop instead.
     keyboardCallback=delegate(int code,IntPtr message,IntPtr data) {
@@ -156,7 +163,6 @@ public class NativeSelectionWindow : Form {
     };
     keyboardHook=PickerApi.SetWindowsHookEx(13,keyboardCallback,PickerApi.GetModuleHandle(null),0);
     rawKeyboard=PickerApi.RegisterRawInputDevices(new[]{new PickerApi.RawDevice { page=1,usage=6,flags=0x100,target=Handle }},1,(uint)Marshal.SizeOf(typeof(PickerApi.RawDevice)));
-    timer.Start();
   }
   protected override void OnPaintBackground(PaintEventArgs e) {}
   protected override void OnPaint(PaintEventArgs e) {}
@@ -173,6 +179,10 @@ public class NativeSelectionWindow : Form {
   protected override void OnMouseUp(MouseEventArgs e) {
     if(e.Button!=MouseButtons.Left||!dragging)return;
     current=e.Location; Capture=false; Finish(true);
+  }
+  protected override void OnMouseLeave(EventArgs e) {
+    base.OnMouseLeave(e);
+    if(!dragging&&!hover.IsEmpty){hover=Rectangle.Empty;dirty=true;}
   }
   private Rectangle RegionBox() {
     int x=Math.Max(0,Math.Min(area.Width,Math.Min(start.X,current.X)));
@@ -221,6 +231,35 @@ public class NativeSelectionWindow : Form {
   }
 }
 
+public sealed class MonitorSelection {
+  private readonly List<NativeSelectionWindow> windows=new List<NativeSelectionWindow>();
+  public NativeSelectionWindow Primary { get { return windows.Count==0?null:windows[0]; } }
+
+  public void Show(Rectangle[] displays,Action<Dictionary<string,object>> done) {
+    if(windows.Count!=0)throw new InvalidOperationException("Native selection already active");
+    if(displays.Length==0)throw new InvalidOperationException("No display available for screenshot selection");
+    try {
+      foreach(Rectangle bounds in displays) {
+        if(bounds.Width<2||bounds.Height<2||(long)bounds.Width*bounds.Height>100000000)throw new InvalidOperationException("Invalid native selection bounds");
+        NativeSelectionWindow window=null;
+        window=new NativeSelectionWindow(bounds,delegate(Dictionary<string,object> result){
+          if(!windows.Contains(window))return;
+          CloseOthers(window);
+          done(result);
+        },windows.Count==0);
+        windows.Add(window);
+        window.Show();
+      }
+    } catch { CloseOthers(null);throw; }
+  }
+
+  private void CloseOthers(NativeSelectionWindow completed) {
+    NativeSelectionWindow[] open=windows.ToArray();
+    windows.Clear();
+    foreach(NativeSelectionWindow window in open)if(window!=completed)window.Close();
+  }
+}
+
 public class NativeSelectionServer : ApplicationContext {
   private class EscapeControl : Control {
     public Action Escape;
@@ -232,7 +271,8 @@ public class NativeSelectionServer : ApplicationContext {
   private readonly IntPtr nonce=new IntPtr((Guid.NewGuid().GetHashCode()&0x3fffffff)+1);
   private System.Windows.Forms.Timer adminWait;
   private readonly JavaScriptSerializer json=new JavaScriptSerializer();
-  private NativeSelectionWindow picker;
+  private readonly MonitorSelection monitors=new MonitorSelection();
+  private NativeSelectionWindow picker { get { return monitors.Primary; } }
   private bool closing;
   private void Reply(string id,object result,string error) {
     try{Console.WriteLine(json.Serialize(new Dictionary<string,object>{{"id",id},{"ok",error==null},{"result",result},{"error",error}}));Console.Out.Flush();}catch(System.IO.IOException){}
@@ -276,13 +316,12 @@ public class NativeSelectionServer : ApplicationContext {
       if(op=="status"){Reply(id,new { active=picker!=null, visible=picker!=null&&PickerApi.IsWindowVisible(picker.Handle), handle=picker==null?"0":picker.Handle.ToInt64().ToString(), sourceWindow=picker==null?"0":picker.SourceWindow, foregroundWindow=PickerApi.GetForegroundWindow().ToInt64().ToString(), escapeHook=picker!=null&&picker.EscapeHook, escapeHotkey=picker!=null&&picker.EscapeHotkey, escapeRawInput=picker!=null&&picker.EscapeRawInput, adminEscapeReady=AdminReady, adminEscapeHook=PickerApi.GetProp(bridge.Handle,"DshShotEscapeHook")==nonce },null);return;}
       if(op!="select")throw new InvalidOperationException("Unknown native selection operation");
       if(picker!=null)throw new InvalidOperationException("Native selection already active");
-      int x=Convert.ToInt32(cmd["x"]),y=Convert.ToInt32(cmd["y"]),w=Convert.ToInt32(cmd["width"]),h=Convert.ToInt32(cmd["height"]);
-      if(w<2||h<2||(long)w*h>100000000)throw new InvalidOperationException("Invalid native selection bounds");
-      string request=id;bool shown=false;
-      picker=new NativeSelectionWindow(new Rectangle(x,y,w,h),delegate(Dictionary<string,object> result){PickerApi.RemoveProp(bridge.Handle,"DshShotEscapeActive");picker=null;if(shown)Reply(request,result,null);});
+      string request=id;
+      monitors.Show(Array.ConvertAll(Screen.AllScreens,screen=>screen.Bounds),delegate(Dictionary<string,object> result){
+        PickerApi.RemoveProp(bridge.Handle,"DshShotEscapeActive");
+        Reply(request,result,null);
+      });
       PickerApi.SetProp(bridge.Handle,"DshShotEscapeActive",nonce);
-      try{picker.Show();shown=true;}
-      catch{picker.Close();throw;}
     }catch(Exception error){Reply(id,null,error.Message);}
   }
   private string handleValue(){return bridge.Handle.ToInt64().ToString();}
